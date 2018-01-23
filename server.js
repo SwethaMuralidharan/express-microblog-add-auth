@@ -1,11 +1,33 @@
 // require express and other modules
 var express = require("express"),
-  app = express(),
-  bodyParser = require("body-parser"),
-  methodOverride = require("method-override");
-// require Post model
+    app = express(),
+    bodyParser = require("body-parser"),
+    methodOverride = require("method-override"),
+
+    //  NEW ADDITIONS
+    cookieParser = require('cookie-parser'),
+    session = require('express-session'),
+    passport = require('passport'),
+    LocalStrategy = require('passport-local').Strategy;
+// require Post and user model
 var db = require("./models"),
-  Post = db.Post;
+    Post = db.Post,
+    User = db.User;
+// middleware for auth
+app.use(cookieParser());
+app.use(session({
+  secret: 'supersecretkey', // change this!
+  resave: false,
+  saveUninitialized: false
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
+passport.use(new LocalStrategy(User.authenticate()));
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
+
 
 // configure bodyParser (for receiving form data)
 app.use(bodyParser.urlencoded({ extended: true, }));
@@ -18,21 +40,59 @@ app.set("view engine", "ejs");
 
 app.use(methodOverride("_method"));
 
-
 // HOMEPAGE ROUTE
-
 app.get("/", function (req, res) {
-  Post.find(function (err, allPosts) {
-    if (err) {
-      res.status(500).json({ error: err.message, });
-    } else {
-      res.render("index", { posts: allPosts, });
-    }
-  });
+    Post.find().populate('user').exec(function (err, allPosts) {
+      if (err) {
+        res.status(500).json({ error: err.message, });
+      } else {
+          res.render("index", { posts: allPosts,user: req.user, });
+      }
+    });
 });
 
+app.get('/signup', function (req, res) {
+  if (req.user) {
+    return res.redirect('/');
+  }
+  res.render('signup');
+});
+
+// sign up new user, then log them in
+// hashes and salts password, saves new user to db
+app.post('/signup', function (req, res) {
+  User.register(new User({ username: req.body.username }), req.body.password,
+    function (err, newUser) {
+      passport.authenticate('local')(req, res, function() {
+        res.redirect('/');
+      });
+    }
+  );
+});
+
+// show login view
+app.get('/login', function (req, res) {
+  if (req.user) {
+    return res.redirect('/');
+  }
+  res.render('login');
+});
+// log in user
+app.post('/login', passport.authenticate('local'), function (req, res) {
+  console.log(req.user);
+  res.redirect('/'); // preferred!
+});
+// log out user
+app.get('/logout', function (req, res) {
+  console.log("BEFORE logout", JSON.stringify(req.user));
+  req.logout();
+  console.log("AFTER logout", JSON.stringify(req.user));
+  res.redirect('/');
+});
+
+
 app.get("/posts/:id", function(req, res) {
-  Post.findById(req.params.id, function (err, foundPost) {
+  Post.findById(req.params.id).populate('user').exec(function (err, foundPost){
     if (err) {
       res.status(500).json({ error: err.message, });
     } else {
@@ -42,8 +102,13 @@ app.get("/posts/:id", function(req, res) {
 });
 
 app.post("/posts", function(req, res) {
+  if (!req.user) {
+    return res.sendStatus(401);
+  }
   var newPost = new Post(req.body);
-
+  newPost.user=req.user;
+  console.log("Logged In user is")
+  console.log(newPost.user.username);
   // save new post in db
   newPost.save(function (err) {
     if (err) {
@@ -56,26 +121,40 @@ app.post("/posts", function(req, res) {
 
 // update post
 app.put("/posts/:id", function (req, res) {
+  if (!req.user) {
+    return res.sendStatus(401);
+  }
   // get post id from url params (`req.params`)
   var postId = req.params.id;
 
   // find post in db by id
+
   Post.findOne({ _id: postId, }, function (err, foundPost) {
     if (err) {
       res.status(500).json({ error: err.message, });
     } else {
-      // update the posts's attributes
-      foundPost.title = req.body.title || foundPost.title;
-      foundPost.description = req.body.description || foundPost.description;
+            // update the posts's attributes
+            console.log('post to be updated : ' +foundPost.user);
+            console.log('request user_id : ' +req.user._id);
 
-      // save updated post in db
-      foundPost.save(function (err, savedPost) {
-        if (err) {
-          res.status(500).json({ error: err.message, });
-        } else {
-          res.redirect("/posts/" + savedPost._id);
-        }
-      });
+            if(foundPost.user == req.user._id){
+              console.log("blah blah");
+              foundPost.title = req.body.title || foundPost.title;
+              foundPost.description = req.body.description || foundPost.description;
+
+              // save updated post in db
+              foundPost.save(function (err, savedPost) {
+                if (err) {
+                  res.status(500).json({ error: err.message, });
+                } else {
+                  res.redirect("/posts/" + savedPost._id);
+                }
+              });
+            }
+            else{
+              res.status(500).json({ error: "Unauthorized edit" });
+            }
+
     }
   });
 });
@@ -83,6 +162,9 @@ app.put("/posts/:id", function (req, res) {
 
 // delete post
 app.delete("/posts/:id", function (req, res) {
+  if (!req.user) {
+    return res.sendStatus(401);
+  }
   // get post id from url params (`req.params`)
   var postId = req.params.id;
 
@@ -109,6 +191,9 @@ app.get("/api/posts", function (req, res) {
 
 // create new post
 app.post("/api/posts", function (req, res) {
+  if (!req.user) {
+    return res.sendStatus(401);
+  }
   // create new post with form data (`req.body`)
   var newPost = new Post(req.body);
 
@@ -143,6 +228,9 @@ app.get("/api/posts/:id", function (req, res) {
 
 // update post
 app.put("/api/posts/:id", function (req, res) {
+  if (!req.user) {
+    return res.sendStatus(401);
+  }
   // get post id from url params (`req.params`)
   var postId = req.params.id;
 
@@ -169,6 +257,9 @@ app.put("/api/posts/:id", function (req, res) {
 
 // delete post
 app.delete("/api/posts/:id", function (req, res) {
+  if (!req.user) {
+    return res.sendStatus(401);
+  }
   // get post id from url params (`req.params`)
   var postId = req.params.id;
 

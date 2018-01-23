@@ -45,6 +45,10 @@
 
                 <!-- post description -->
                 <%= post.description %>
+                <% if(post.user) {%>
+                  <%= post.user.username %>
+                <%  } %>
+
 
                 <div class="pull-right">
                   <!-- pencil icon to toggle update form -->
