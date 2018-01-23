@@ -142,8 +142,6 @@ app.put("/posts/:id", function (req, res) {
             console.log('post to be updated : ' +foundPost.user);
             console.log('request user_id : ' +req.user._id);
 
-            if(foundPost.user == req.user._id){
-              console.log("blah blah");
               foundPost.title = req.body.title || foundPost.title;
               foundPost.description = req.body.description || foundPost.description;
 
@@ -155,12 +153,7 @@ app.put("/posts/:id", function (req, res) {
                   res.redirect("/posts/" + savedPost._id);
                 }
               });
-            }
-            else{
-              res.status(500).json({ error: "Unauthorized edit" });
-            }
-
-    }
+          }
   });
 });
 
