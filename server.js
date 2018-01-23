@@ -132,7 +132,12 @@ app.put("/posts/:id", function (req, res) {
   Post.findOne({ _id: postId, }, function (err, foundPost) {
     if (err) {
       res.status(500).json({ error: err.message, });
-    } else {
+    }
+    else if(foundPost.user && foundPost.user !== req.user._id)
+    {
+      return;
+    }
+    else {
             // update the posts's attributes
             console.log('post to be updated : ' +foundPost.user);
             console.log('request user_id : ' +req.user._id);
